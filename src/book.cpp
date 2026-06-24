@@ -4,6 +4,7 @@
 #include <iostream>
 
 
+
 Order Order :: limit(int id, bool buyside, int price, int qty){
         return Order{id, buyside, price, qty, false};
 }
@@ -14,7 +15,7 @@ Order Order :: market(int id, bool buyside, int qty){
 
 
 
-void Book:: matching(Order& newOrder, std::list<PriceLevel>& oppositeList){
+void Book:: matching(Order& newOrder, std::list<PriceLevel>& oppositeList,std::vector<Fill>& fills){
            
     while (!oppositeList.empty() && newOrder.qty_remaining>0){
         std::list<PriceLevel>::iterator it =oppositeList.begin(); // first price level
@@ -23,6 +24,7 @@ void Book:: matching(Order& newOrder, std::list<PriceLevel>& oppositeList){
         int subtractedValue=std::min(newOrder.qty_remaining,orderIt->qty_remaining);
         newOrder.qty_remaining-=subtractedValue;
         orderIt->qty_remaining-=subtractedValue;
+        fills.push_back({newOrder.id,orderIt->id,orderIt->price,subtractedValue});
         
 
         // either order is completed or qty at current price goes 0
@@ -38,19 +40,20 @@ void Book:: matching(Order& newOrder, std::list<PriceLevel>& oppositeList){
 }
 
 
-bool Book::market_match(Order & newOrder){
+bool Book::market_match(Order & newOrder, std::vector<Fill>& fills){
     std::list<PriceLevel>& oppositeList = newOrder.buyside ? sellSide : buySide;
     if(oppositeList.empty()){return false;}
-    while (!oppositeList.empty() && newOrder.qty_remaining>0){
-        matching(newOrder,oppositeList);
-    }
+
+    matching(newOrder,oppositeList,fills);
+    
     return true;
 
 }
 
 
-void Book:: add(Order newOrder){
+std::vector<Fill> Book:: add(Order newOrder){
     std::list<PriceLevel> &correctList=(newOrder.buyside)? buySide:sellSide;
+    std::vector<Fill> fills;
 
     auto insertToMap =[&](const auto& it,const bool& create,const Order& order){
         if (create){
@@ -100,7 +103,7 @@ void Book:: add(Order newOrder){
 
         while(!oppositeList.empty() && matchingPriceComparator(oppositeList,newOrder) && newOrder.qty_remaining>0){
             //orders at particular price
-            matching(newOrder,oppositeList);
+            matching(newOrder,oppositeList,fills);
         }
 
         if (newOrder.qty_remaining>0){ // we could not complete whole newOrder
@@ -110,10 +113,11 @@ void Book:: add(Order newOrder){
 
     };
     if(newOrder.marketOrder){
-        market_match(newOrder);
+        market_match(newOrder,fills);
     }else{
         limit_match();
     }
+    return fills;
 }
 
 
@@ -165,6 +169,37 @@ void Book:: print_book(){
     std::cout<<"\n";
     std::cout<<"\n";
     print(sellSide,false);
+
+}
+
+
+int Book::best_bid() const{
+    if(buySide.empty()){return -1;}
+    return buySide.front().price;
+}
+
+int Book::best_ask()const{
+    if(sellSide.empty()){return -1;}
+    return sellSide.front().price;
+}
+
+int Book:: qty_at(bool buyside, int price)const{
+    const std::list<PriceLevel>& correctList= buyside ? buySide:sellSide;
+    auto it= std::find_if(correctList.begin(),correctList.end(),[price](const PriceLevel & priceLevel){
+        return priceLevel.price==price;
+    });
+
+    if(it==correctList.end()){return -1;}
+
+    const std::list<Order>& orders=it->orders;
+    int totalQty=0;
+
+    for(auto it =orders.begin();it!=orders.end();it++){
+        totalQty+=it->qty_remaining;
+    }
+    return totalQty;
+
+
 
 }
 
