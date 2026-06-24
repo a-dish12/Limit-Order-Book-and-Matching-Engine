@@ -6,11 +6,11 @@
 
 
 Order Order :: limit(int id, bool buyside, int price, int qty){
-        return Order{id, buyside, price, qty, false};
+    return Order{id, buyside, price, qty, false};
 }
 
 Order Order :: market(int id, bool buyside, int qty){
-        return Order{id, buyside, 0, qty, true};
+    return Order{id, buyside, 0, qty, true};
 }
 
 

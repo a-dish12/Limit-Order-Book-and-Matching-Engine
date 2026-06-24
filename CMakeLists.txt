@@ -34,3 +34,10 @@ target_link_libraries(lob PRIVATE book_lib)
 # Lets you run engine tests independently of main.
 add_executable(lob_tests tests/test_main.cpp)
 target_link_libraries(lob_tests PRIVATE book_lib)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+add_executable(lob_bench bench/bench_main.cpp bench/generator.cpp)
+target_link_libraries(lob_bench PRIVATE book_lib)
