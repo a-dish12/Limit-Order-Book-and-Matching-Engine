@@ -1,6 +1,9 @@
+#ifdef USE_ALLOC_COUNTER
+#include "alloc_counter.h"
+#endif
 #include "book.h"
 #include "generator.h"
-
+#include "alloc_counter.h"
 #include <chrono>
 #include <vector>
 #include <algorithm>
@@ -49,16 +52,17 @@ int main(int argc, char** argv) {
                 cfg.num_actions, (unsigned long long)cfg.seed);
     std::vector<Action> actions = generate_actions(cfg);
 
-    Book book;
+    Book book(cfg.num_actions);   
 
     // Per-operation latency samples, kept separate for the two hot paths.
     std::vector<long long> add_ns, cancel_ns;
     add_ns.reserve(actions.size());
     cancel_ns.reserve(actions.size());
 
-    // Time the whole replay for throughput; time each op for latency.
-    auto run_start = Clock::now();
-
+   #ifdef USE_ALLOC_COUNTER
+        alloc_counter::reset();
+    #endif
+        auto run_start = Clock::now();  
     for (const Action& a : actions) {
         if (a.kind == Action::Cancel) {
             int id = a.cancel_id;
@@ -78,6 +82,9 @@ int main(int argc, char** argv) {
     }
 
     auto run_end = Clock::now();
+    #ifdef USE_ALLOC_COUNTER
+        unsigned long long replay_allocs = alloc_counter::count();
+    #endif
     double total_s =
         std::chrono::duration_cast<std::chrono::duration<double>>(run_end - run_start)
             .count();
@@ -87,6 +94,9 @@ int main(int argc, char** argv) {
                 total_s, actions.size());
     report("add",    add_ns,    total_s);
     report("cancel", cancel_ns, total_s);
-
+    #ifdef USE_ALLOC_COUNTER
+        std::printf("allocations during replay: %llu  (add ops: %zu)\n",
+                replay_allocs, add_ns.size());
+    #endif
     return 0;
 }

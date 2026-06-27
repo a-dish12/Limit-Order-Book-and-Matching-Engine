@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GENERATOR_H
+#define GENERATOR_H
 
 #include "book.h"
 #include <vector>
@@ -37,3 +38,7 @@ struct GenConfig {
 // reference ids that were added earlier in the stream (so they exercise
 // the O(1) map path; some may still miss if the order was already filled).
 std::vector<Action> generate_actions(const GenConfig& cfg);
+
+
+
+#endif

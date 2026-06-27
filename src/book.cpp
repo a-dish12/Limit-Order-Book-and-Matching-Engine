@@ -6,35 +6,80 @@
 
 
 Order Order :: limit(int id, bool buyside, int price, int qty){
-    return Order{id, buyside, price, qty, false};
+    return Order{id, buyside, price, qty, false,nullptr,nullptr};
 }
 
 Order Order :: market(int id, bool buyside, int qty){
-    return Order{id, buyside, 0, qty, true};
+    return Order{id, buyside, 0, qty, true,nullptr,nullptr};
+}
+
+OrderPool:: OrderPool(int cap){
+    capacity=cap;
+    storage= new Order[capacity];
+
+    for(int i=0;i<cap-1;i++){
+        storage[i].next=&storage[i+1];
+        storage[i].prev=nullptr;
+    }
+
+    storage[cap-1].next=nullptr;
+    storage[cap-1].prev=nullptr;
+
+    free_head=&storage[0];
+}
+
+OrderPool ::~OrderPool(){
+    delete[] storage;
+}
+
+Order *OrderPool :: acquire(){
+    if(free_head==nullptr){return nullptr;}
+
+    Order* slot=free_head;
+    free_head=slot->next;
+
+    slot->next=nullptr;
+    return slot;
+}
+
+void OrderPool ::release(Order* o){
+    o->prev=nullptr;
+    o->next=free_head;
+    free_head=o;
 }
 
 
+Book:: Book(int cap):pool(cap){}
 
 void Book:: matching(Order& newOrder, std::list<PriceLevel>& oppositeList,std::vector<Fill>& fills){
            
     while (!oppositeList.empty() && newOrder.qty_remaining>0){
         std::list<PriceLevel>::iterator it =oppositeList.begin(); // first price level
-        std::list<Order>::iterator orderIt= it->orders.begin();  //first order in that price level
+        // std::list<Order>::iterator orderIt= it->orders.begin();  //first order in that price level
+        Order * frontOrder=it->head;
+
         
-        int subtractedValue=std::min(newOrder.qty_remaining,orderIt->qty_remaining);
+        int subtractedValue=std::min(newOrder.qty_remaining,frontOrder->qty_remaining);
         newOrder.qty_remaining-=subtractedValue;
-        orderIt->qty_remaining-=subtractedValue;
-        fills.push_back({newOrder.id,orderIt->id,orderIt->price,subtractedValue});
+        frontOrder->qty_remaining-=subtractedValue;
+        fills.push_back({newOrder.id,frontOrder->id,frontOrder->price,subtractedValue});
         
 
         // either order is completed or qty at current price goes 0
-        if (orderIt->qty_remaining==0){
-            orderMap.erase(orderIt->id);
-            it->orders.pop_front();
-            if (it->orders.empty()){
+        if (frontOrder->qty_remaining==0){
+            orderMap.erase(frontOrder->id);
+
+            Order * nextOrder=frontOrder->next;
+
+            if(nextOrder==nullptr){// list of orders now empty, pop that price level
                 oppositeList.pop_front();
+            }else{ // we still have more orders
+                it->head=nextOrder;
+                nextOrder->prev=nullptr;
                 
             }
+            pool.release(frontOrder);
+            
         }
     }
 }
@@ -54,17 +99,6 @@ bool Book::market_match(Order & newOrder, std::vector<Fill>& fills){
 std::vector<Fill> Book:: add(Order newOrder){
     std::list<PriceLevel> &correctList=(newOrder.buyside)? buySide:sellSide;
     std::vector<Fill> fills;
-
-    auto insertToMap =[&](const auto& it,const bool& create,const Order& order){
-        if (create){
-            auto newLevel=correctList.insert(it,{order.price,{order}});
-            orderMap[order.id]={newLevel,newLevel->orders.begin()};            
-        }else{
-            it->orders.emplace_back(order);
-            orderMap[order.id]={it,std::prev(it->orders.end())};
-        }
-    };
-
     auto matchingPriceComparator= [](std::list<PriceLevel>& listToMatch,Order& order){
         if (order.buyside){
             if(listToMatch.front().price<=order.price){
@@ -78,7 +112,7 @@ std::vector<Fill> Book:: add(Order newOrder){
         return false;
     };
 
-    auto insertToList = [&](const Order& order) {
+    auto insertToList = [&]( Order& order) {
         auto it = std::find_if(correctList.begin(), correctList.end(),
             [&](const PriceLevel& p) { 
                 if (order.buyside){
@@ -88,13 +122,40 @@ std::vector<Fill> Book:: add(Order newOrder){
                 }
 
                 });
+
+        Order *slot=pool.acquire();
+        slot->id=order.id;
+        slot->buyside=order.buyside;
+        slot->marketOrder=order.marketOrder;
+        slot->price=order.price;
+        slot->qty_remaining=order.qty_remaining;
+        slot->next=nullptr;
+        slot->prev=nullptr;
+
+        std::list<PriceLevel>::iterator pId;
+       
+        
+        auto createNewPriceLevel=[](Order* slot){
+            PriceLevel newLevel;
+            newLevel.price=slot->price;
+            newLevel.head=slot;
+            newLevel.tail=slot;
+            return newLevel;
+        };
+
         if (it==correctList.end()){
-            insertToMap(it,true,order);                   
-        }else if (it->price==order.price){
-            insertToMap(it,false,order);
+            correctList.emplace_back(createNewPriceLevel(slot));
+            pId=std::prev(correctList.end());    
+        }else if(it->price==slot->price){
+            slot->prev=it->tail;
+            it->tail->next=slot;
+            it->tail=slot;
+            pId=it;
         }else{
-            insertToMap(it,true,order);
+            pId=correctList.insert(it,createNewPriceLevel(slot));
         }
+        orderMap[order.id]={pId,slot};
+
     };
 
 
@@ -130,19 +191,33 @@ bool Book::cancel(int id){
     orderLoc=it->second;
 
     std::list<PriceLevel>::iterator priceLevelIt= orderLoc.priceLevel;
-    std::list<Order>::iterator orderIt=orderLoc.order;
+    Order* orderP=orderLoc.order;
 
     std::list<PriceLevel> & correctSide= orderLoc.order->buyside? buySide:sellSide;
 
-    priceLevelIt->orders.erase(orderIt);
-    if (priceLevelIt->orders.empty()){
+    if(orderP==priceLevelIt->head && orderP==priceLevelIt->tail){
+        priceLevelIt->head=nullptr;
+        priceLevelIt->tail=nullptr;
         correctSide.erase(priceLevelIt);
+    }else if (orderP==priceLevelIt->head){
+        priceLevelIt->head=priceLevelIt->head->next;
+        priceLevelIt->head->prev=nullptr;
+    }else if(orderP==priceLevelIt->tail){
+        priceLevelIt->tail=orderP->prev;
+        orderP->prev->next=nullptr;
+    }else{
+        orderP->prev->next=orderP->next;
+        orderP->next->prev=orderP->prev;
     }
 
-    orderMap.erase(it);
+    orderMap.erase(id);
+    pool.release(orderP);
     return true;
-    
 }
+    
+
+
+
 
 void Book:: print_book(){
     
@@ -155,11 +230,12 @@ void Book:: print_book(){
 
         for(auto it=printList.begin(); it!=printList.end();it++){
             std::cout<<"price level is "<<it->price;
-            const std::list<Order> &orders=it->orders;
+            Order* order=it->head;
 
-            for (auto order= orders.begin();order!=orders.end();order++){
+            while(order!=nullptr){
                 std::cout<<" id: "<< order->id<< " price: "<<order->price<< " qty remaining: "<<order->qty_remaining;
                 std::cout<<"\n";
+                order=order->next;
             }
 
         }
@@ -191,16 +267,12 @@ int Book:: qty_at(bool buyside, int price)const{
 
     if(it==correctList.end()){return -1;}
 
-    const std::list<Order>& orders=it->orders;
+    Order *order=it->head;
     int totalQty=0;
 
-    for(auto it =orders.begin();it!=orders.end();it++){
-        totalQty+=it->qty_remaining;
+    while(order!=nullptr){
+        totalQty+=order->qty_remaining;
+        order=order->next;
     }
     return totalQty;
-
-
-
 }
-
-

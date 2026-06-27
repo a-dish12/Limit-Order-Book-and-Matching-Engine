@@ -39,7 +39,7 @@ static void check_fill(const Fill& f, int taker, int maker, int price, int qty,
 // =====================================================================
 static void scenario_1_empty_book() {
     std::cout << "Scenario 1: empty book\n";
-    Book b;
+    Book b(64);
     auto fills = b.add(Order::limit(1, /*buyside=*/true, /*price=*/100, /*qty=*/50));
 
     CHECK_EQ(fills.size(), 0u);     // empty book: nothing to match
@@ -54,7 +54,7 @@ static void scenario_1_empty_book() {
 // =====================================================================
 static void scenario_2_two_level_sweep() {
     std::cout << "Scenario 2: two-level sweep\n";
-    Book b;
+    Book b(64);
     b.add(Order::limit(1, /*sell*/false, 100, 50));
     b.add(Order::limit(2, /*sell*/false, 101, 40));
     auto fills = b.add(Order::limit(3, /*buy*/true, 101, 80));
@@ -77,7 +77,7 @@ static void scenario_2_two_level_sweep() {
 // =====================================================================
 static void scenario_3_over_fill() {
     std::cout << "Scenario 3: over-fill / dry book\n";
-    Book b;
+    Book b(64);
     b.add(Order::limit(1, /*sell*/false, 100, 50));
     auto fills = b.add(Order::limit(2, /*buy*/true, 105, 80));
     // (swap to Order::market(2, true, 80) if that's the case you traced)
@@ -98,7 +98,7 @@ static void scenario_3_over_fill() {
 // =====================================================================
 static void scenario_4_partial_aggressor() {
     std::cout << "Scenario 4: partial aggressor\n";
-    Book b;
+    Book b(64);
     b.add(Order::limit(1, /*sell*/false, 100, 50));
     auto fills = b.add(Order::limit(2, /*buy*/true, 100, 20));
 

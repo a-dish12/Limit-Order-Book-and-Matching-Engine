@@ -1,8 +1,9 @@
-#pragma once
-
+#ifndef BOOK_H
+#define BOOK_H
 #include <list>
 #include <unordered_map>
 #include <vector>
+
 
 
 struct Order{
@@ -12,14 +13,29 @@ struct Order{
     int qty_remaining;
     bool marketOrder;
 
+    Order* next;
+    Order* prev;
+
     static Order limit(int id, bool buyside, int price, int qty);
 
     static Order market(int id, bool buyside, int qty);
 };
+struct OrderPool{
+    Order * storage;
+    Order * free_head;
+    int capacity;
+
+    OrderPool(int cap);
+    ~OrderPool();
+
+    Order* acquire();
+    void release(Order* o);
+};
 
 struct PriceLevel{
     int price;
-    std::list<Order> orders;
+    Order* head;
+    Order* tail;
 };
 
 struct Fill{
@@ -31,7 +47,7 @@ struct Fill{
 
 struct OrderLocation{
     std::list<PriceLevel>::iterator priceLevel;
-    std::list<Order>::iterator order;
+    Order* order;
 };
 
 class Book{
@@ -39,6 +55,7 @@ class Book{
     private:
         std::list<PriceLevel> buySide, sellSide;
         std::unordered_map<int,OrderLocation> orderMap;
+        OrderPool pool;
 
         void matching(Order& newOrder, std::list<PriceLevel>& oppositeList,std::vector<Fill>& fills);
 
@@ -46,6 +63,8 @@ class Book{
     
     public:
         std::vector<Fill> add(Order newOrder);
+
+        Book(int cap);
 
         bool cancel(int id);
 
@@ -58,3 +77,5 @@ class Book{
         int qty_at(bool buyside, int price) const ;
 
 };
+
+#endif
