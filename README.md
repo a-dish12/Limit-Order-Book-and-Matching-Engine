@@ -139,6 +139,16 @@ come from `lob_bench_clean`.
 ./build/lob_bench_clean [num_actions] [seed]
 ```
 
+> **Note on reproducibility:** `lob_bench_clean` currently implements the
+> **open-loop** methodology described below. The historical Stage 3 table
+> further down was measured under an earlier **closed-loop** version of this
+> harness, which has since been rewritten and no longer exists in this
+> repository. Running the command above today will *not* reproduce those
+> absolute figures — it measures latency-under-load against an intended
+> schedule, a different experiment. The Stage 3 **relative deltas** remain
+> valid (see below for why); the absolute figures from that table are not
+> currently reproducible and are not claimed as current results.
+
 ### Measurement methodology
 
 The benchmark is **open-loop and coordinated-omission-aware**. Each operation has
@@ -161,30 +171,55 @@ overstate their tail performance.
   OS scheduling jitter. Fully defensible absolute numbers require a pinned,
   isolated core (Linux `isolcpus`/`taskset`) — a known next step, not yet done.
 
-### Stage 3 before / after (relative deltas — locked baseline, same harness & seed)
+### Stage 3 result (the optimization that matters: deltas, not absolutes)
 
-These figures compare the pre- and post-optimization engine under the **same**
-(original, closed-loop) benchmark, so the **deltas are valid** — both sides share
-any methodological bias. Absolute tail figures are being re-measured under the
-open-loop methodology above; treat the absolute nanosecond values as the
-closed-loop baseline, not the final defensible tail.
+| Metric | Change |
+|---|---|
+| `add` p99.9 | **−22%** |
+| `add` p99 | −16% |
+| `add` throughput | **+20%** |
+| `cancel` p99.9 | **−33%** |
+| `cancel` p99 | −33% |
+| `add` p50 | flat (no change) |
+| Heap allocations per 1M-action run | **2.1M → 1.6M** (exact count, unaffected by timing methodology) |
 
-| Operation | metric | before (`std::list`) | after (pool) | change |
-|---|---|---|---|---|
-| `add` | p50 | ~42 ns | ~42 ns | flat |
-| `add` | p99 | ~250 ns | ~209 ns | −16% |
-| `add` | p99.9 | ~375 ns | ~292 ns | −22% |
-| `add` | throughput | ~10M ops/s | ~12M ops/s | +20% |
-| `cancel` | p99 | ~125 ns | ~84 ns | −33% |
-| `cancel` | p99.9 | ~250 ns | ~167 ns | −33% |
+These deltas come from comparing the engine before and after the pool-allocator
+change under one fixed (now-retired, closed-loop) harness and seed — **same
+harness, same seed, both sides**, so the relative improvement is robust to
+whatever methodological bias that harness had. Closed-loop measurement
+understates *absolute* tail latency (see Measurement methodology below), but it
+understates the before- and after-measurement equally, so the percentage
+improvement still holds. The allocation count is a hard count of `operator new`
+calls, not a timing measurement, so it carries no such caveat at all.
 
 The median is unchanged — the common-case order never paid a dominant allocation
 cost. The win is in the **tail**, exactly where allocation stalls and cache
-misses concentrate. Heap allocations per 1M-action run dropped from ~2.1M to
-~1.6M (the remainder is the `unordered_map`'s own per-insert allocation, the
-natural next target). The true `max` was largely unchanged — the optimization
+misses concentrate. The true `max` was largely unchanged — the optimization
 tightened the frequent tail (p99.9), not the rare worst case (likely map rehash
 or OS hiccup), and this is not claimed otherwise.
+
+<details>
+<summary>Historical absolute figures (closed-loop harness, retired — not reproducible from current code, not claimed as current results)</summary>
+
+| Operation | metric | before (`std::list`) | after (pool) |
+|---|---|---|---|
+| `add` | p50 | ~42 ns | ~42 ns |
+| `add` | p99 | ~250 ns | ~209 ns |
+| `add` | p99.9 | ~375 ns | ~292 ns |
+| `add` | throughput | ~10M ops/s | ~12M ops/s |
+| `cancel` | p99 | ~125 ns | ~84 ns |
+| `cancel` | p99.9 | ~250 ns | ~167 ns |
+
+These absolute values were produced by an earlier closed-loop version of
+`bench_main.cpp` that has since been replaced by the open-loop harness described
+above. They are kept here only as the source of the percentage deltas in the
+table above, and should not be quoted as current or final performance figures.
+
+</details>
+
+A current, defensible **absolute** tail-latency number (open-loop,
+coordinated-omission-corrected, properly resolved and isolated) is the one
+piece of this project still pending — see Measurement methodology.
 
 ## Roadmap
 
