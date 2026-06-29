@@ -43,6 +43,13 @@ struct Fill{
     int maker_id;
     int price;
     int qty;
+
+    bool operator==(const Fill& o) const {   // body inside the struct = inline, header-safe
+        return taker_id == o.taker_id
+            && maker_id == o.maker_id
+            && price    == o.price
+            && qty      == o.qty;
+    }
 };
 
 struct OrderLocation{

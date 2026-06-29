@@ -26,7 +26,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 # --- The Book library ---
 # Compile src/book.cpp once into a reusable library. Everything that needs Book
 # (main, benchmarks, tests) links against this instead of recompiling it.
-add_library(book_lib src/book.cpp)
+add_library(book_lib src/book.cpp src/reference_book.cpp)
 # Pin the ENGINE to -O2 unconditionally. This is the code the benchmark actually
 # times (Book::add / Book::cancel run here, not in the harness), so it must be
 # optimized regardless of the global build type — otherwise a Debug cache would
@@ -57,3 +57,7 @@ target_link_libraries(lob_bench_clean PRIVATE book_lib)
 # silently unoptimized no matter what CMAKE_BUILD_TYPE is cached as.
 target_compile_options(lob_bench       PRIVATE -O2)
 target_compile_options(lob_bench_clean PRIVATE -O2)
+
+
+add_executable(lob_difftest tests/difftest_main.cpp)
+target_link_libraries(lob_difftest PRIVATE book_lib)

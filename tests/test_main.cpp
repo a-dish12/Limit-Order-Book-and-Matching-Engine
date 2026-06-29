@@ -1,6 +1,11 @@
 #include "book.h"
 #include <iostream>
 #include <vector>
+#include "reference_book.h"
+#include <cassert>
+#include <cstdio>
+
+
 
 // ---- tiny assertion harness (no external deps) ----
 static int g_failures = 0;
@@ -111,11 +116,31 @@ static void scenario_4_partial_aggressor() {
     CHECK_EQ(b.best_bid(), -1);         // aggressor fully filled, nothing rests on buy
 }
 
+// =====================================================================
+// Reference engine sanity: market order partial-fills a resting ask.
+//   ask id30 sell 10 @ 200; market BUY 4 -> one fill (31,30,200,4), 6 rest.
+//   Uses the same counted CHECK_EQ / check_fill harness as the scenarios.
+// =====================================================================
+static void test_reference_market_partial_fill() {
+    std::cout << "Scenario 5: Reference: market partial fill\n";
+    ReferenceBook ref;
+
+    auto f1 = ref.add(Order::limit(30, /*buyside=*/false, /*price=*/200, /*qty=*/10));
+    CHECK_EQ(f1.size(), 0u);   // rests, no match yet
+
+    auto f2 = ref.add(Order::market(31, /*buyside=*/true, /*qty=*/4));
+    CHECK_EQ(f2.size(), 1u);
+    if (f2.size() == 1) {
+        check_fill(f2[0], /*taker*/31, /*maker*/30, /*price*/200, /*qty*/4, "REF.fill0");
+    }
+}
+
 int main() {
     scenario_1_empty_book();
     scenario_2_two_level_sweep();
     scenario_3_over_fill();
     scenario_4_partial_aggressor();
+    test_reference_market_partial_fill();
 
     std::cout << "\n" << (g_checks - g_failures) << "/" << g_checks
               << " checks passed.\n";

@@ -5,6 +5,7 @@
 
 
 
+
 Order Order :: limit(int id, bool buyside, int price, int qty){
     return Order{id, buyside, price, qty, false,nullptr,nullptr};
 }
@@ -52,8 +53,24 @@ void OrderPool ::release(Order* o){
 Book:: Book(int cap):pool(cap){}
 
 void Book:: matching(Order& newOrder, std::list<PriceLevel>& oppositeList,std::vector<Fill>& fills){
+
+    auto matchingPriceComparator= [& newOrder, & oppositeList](){
+        if (newOrder.buyside){
+            if(oppositeList.front().price<=newOrder.price){
+                return true;
+            }
+        }else{
+            if(oppositeList.front().price>=newOrder.price){
+                return true;
+            }
+        }
+        return false;
+    };
            
     while (!oppositeList.empty() && newOrder.qty_remaining>0){
+        if(!newOrder.marketOrder && !matchingPriceComparator()){
+            break;
+        }
         std::list<PriceLevel>::iterator it =oppositeList.begin(); // first price level
         // std::list<Order>::iterator orderIt= it->orders.begin();  //first order in that price level
         Order * frontOrder=it->head;
@@ -99,18 +116,7 @@ bool Book::market_match(Order & newOrder, std::vector<Fill>& fills){
 std::vector<Fill> Book:: add(Order newOrder){
     std::list<PriceLevel> &correctList=(newOrder.buyside)? buySide:sellSide;
     std::vector<Fill> fills;
-    auto matchingPriceComparator= [](std::list<PriceLevel>& listToMatch,Order& order){
-        if (order.buyside){
-            if(listToMatch.front().price<=order.price){
-                return true;
-            }
-        }else{
-            if(listToMatch.front().price>=order.price){
-                return true;
-            }
-        }
-        return false;
-    };
+   
 
     auto insertToList = [&]( Order& order) {
         auto it = std::find_if(correctList.begin(), correctList.end(),
@@ -162,10 +168,8 @@ std::vector<Fill> Book:: add(Order newOrder){
     auto limit_match=[&](){
         std::list<PriceLevel>& oppositeList = newOrder.buyside ? sellSide : buySide;
 
-        while(!oppositeList.empty() && matchingPriceComparator(oppositeList,newOrder) && newOrder.qty_remaining>0){
-            //orders at particular price
-            matching(newOrder,oppositeList,fills);
-        }
+        matching(newOrder,oppositeList,fills);
+        
 
         if (newOrder.qty_remaining>0){ // we could not complete whole newOrder
             insertToList(newOrder);
@@ -247,7 +251,6 @@ void Book:: print_book(){
     print(sellSide,false);
 
 }
-
 
 int Book::best_bid() const{
     if(buySide.empty()){return -1;}
